@@ -1,20 +1,37 @@
 -- Marginalia: a printed page and one ultramarine pen.
 --
--- All code is plain text in one colour. Keywords are bold.
--- The pen (blue) marks only comments, the cursor and links.
--- Red is for errors. Green and yellow appear only where a tool needs them:
--- diffs, git signs and warnings.
+-- Code is plain text. Colour goes only to what is easy to miss:
+-- the pen (blue) marks comments, the cursor and links; strings are green;
+-- numbers and constants are violet. Definitions are bold. Red is for errors.
 
 local M = {}
 
+---@class marginalia.Config
+---@field transparent? boolean No background in the editor, so the terminal background shows through. Floating windows keep theirs.
+local config = {
+  transparent = false,
+}
+
+---@param opts? marginalia.Config
+function M.setup(opts)
+  config = vim.tbl_extend("force", config, opts or {})
+end
+
 local function groups(p)
+  -- nil leaves the background empty.
+  local page = not config.transparent and p.background or nil
+
   local pen = { fg = p.accent, italic = true }
   local text = { fg = p.foreground }
   local bold = { fg = p.foreground, bold = true }
+  local def = bold
+  local str = { fg = p.string }
+  local const = { fg = p.constant }
+  local punct = { fg = p.muted }
 
   return {
     -- Editor --------------------------------------------------------------
-    Normal = { fg = p.foreground, bg = p.background },
+    Normal = { fg = p.foreground, bg = page },
     NormalNC = { link = "Normal" },
     NormalFloat = { fg = p.foreground, bg = p.surface },
     FloatBorder = { fg = p.border, bg = p.surface },
@@ -26,7 +43,8 @@ local function groups(p)
     CursorLine = { bg = p.surface },
     CursorColumn = { bg = p.surface },
     ColorColumn = { bg = p.surface },
-    CursorLineNr = { fg = p.foreground, bold = true },
+    -- The pen marks the line you are on, so cursorlineopt = "number" is enough.
+    CursorLineNr = { fg = p.accent, bold = true },
     LineNr = { fg = p.faint },
     SignColumn = {},
     FoldColumn = { fg = p.faint },
@@ -43,7 +61,7 @@ local function groups(p)
     WinBarNC = { fg = p.muted },
     TabLine = { fg = p.muted, bg = p.surface },
     TabLineFill = { bg = p.surface },
-    TabLineSel = { fg = p.foreground, bg = p.background, bold = true },
+    TabLineSel = { fg = p.foreground, bg = page, bold = true },
     Title = bold,
     Directory = { fg = p.accent },
     Visual = { bg = p.selection },
@@ -77,67 +95,99 @@ local function groups(p)
     SpellLocal = { undercurl = true, sp = p.accent },
     SpellRare = { undercurl = true, sp = p.accent },
 
-    -- Syntax: one colour, keywords bold ---------------------------------
+    -- Syntax -------------------------------------------------------------
+    -- Colour only what is easy to miss: comments, strings, constants.
+    -- Keywords stay plain: their shape is enough. Definitions are bold,
+    -- so the structure of a file shows. Punctuation steps back.
     Comment = pen,
-    Constant = text,
-    String = text,
-    Character = text,
-    Number = text,
-    Boolean = text,
-    Float = text,
+    SpecialComment = pen,
+    Todo = { fg = p.accent, bold = true, italic = true },
+    String = str,
+    Character = str,
+    Constant = const,
+    Number = const,
+    Boolean = const,
+    Float = const,
     Identifier = text,
     Function = text,
-    Statement = bold,
-    Conditional = bold,
-    Repeat = bold,
-    Label = bold,
+    Statement = text,
+    Conditional = text,
+    Repeat = text,
+    Label = text,
     Operator = text,
-    Keyword = bold,
-    Exception = bold,
-    PreProc = bold,
-    Include = bold,
-    Define = bold,
+    Keyword = text,
+    Exception = text,
+    PreProc = text,
+    Include = text,
+    Define = text,
     Macro = text,
-    PreCondit = bold,
+    PreCondit = text,
     Type = text,
-    StorageClass = bold,
-    Structure = bold,
-    Typedef = bold,
+    StorageClass = text,
+    Structure = text,
+    Typedef = text,
     Special = text,
-    SpecialChar = text,
+    SpecialChar = str,
     Tag = text,
-    Delimiter = text,
-    SpecialComment = pen,
+    Delimiter = punct,
     Debug = text,
     Underlined = { fg = p.accent, underline = true },
     Ignore = { fg = p.faint },
     Error = { fg = p.error },
-    Todo = { fg = p.accent, bold = true, italic = true },
 
     -- Treesitter: most groups link to the syntax groups above by default.
-    ["@variable"] = text,
-    ["@variable.builtin"] = text,
-    ["@constant.builtin"] = text,
-    ["@module"] = text,
-    ["@property"] = text,
-    ["@punctuation"] = text,
-    ["@keyword"] = bold,
-    ["@keyword.function"] = bold,
-    ["@keyword.return"] = bold,
-    ["@keyword.operator"] = bold,
-    ["@type.builtin"] = text,
-    ["@function.builtin"] = text,
-    ["@constructor"] = text,
-    ["@tag"] = text,
-    ["@tag.attribute"] = text,
-    ["@tag.delimiter"] = text,
-    ["@string.documentation"] = pen,
     ["@comment"] = pen,
     ["@comment.documentation"] = pen,
+    ["@string.documentation"] = pen,
     ["@comment.todo"] = { fg = p.accent, bold = true, italic = true },
     ["@comment.note"] = { fg = p.accent, bold = true, italic = true },
     ["@comment.warning"] = { fg = p.warning, bold = true },
     ["@comment.error"] = { fg = p.error, bold = true },
+
+    ["@string"] = str,
+    ["@string.escape"] = str,
+    ["@string.regexp"] = str,
+    ["@string.special"] = str,
+    ["@string.special.url"] = { fg = p.accent, underline = true },
+    ["@character"] = str,
+
+    -- Only values are violet. A name in capitals is still a name.
+    ["@constant"] = text,
+    ["@constant.builtin"] = const,
+    ["@number"] = const,
+    ["@number.float"] = const,
+    ["@boolean"] = const,
+
+    -- @function is a definition; calls have their own groups.
+    ["@function"] = def,
+    ["@function.method"] = def,
+    ["@function.call"] = text,
+    ["@function.method.call"] = text,
+    ["@function.builtin"] = text,
+    ["@function.macro"] = text,
+    ["@constructor"] = text,
+    ["@type.definition"] = def,
+    ["@type"] = text,
+    ["@type.builtin"] = text,
+
+    ["@variable"] = text,
+    ["@variable.builtin"] = text,
+    ["@variable.parameter"] = text,
+    ["@variable.member"] = text,
+    ["@property"] = text,
+    ["@module"] = text,
+    ["@label"] = text,
+    ["@keyword"] = text,
+    ["@operator"] = text,
+    ["@punctuation"] = punct,
+    ["@punctuation.bracket"] = punct,
+    ["@punctuation.delimiter"] = punct,
+    ["@punctuation.special"] = punct,
+
+    ["@tag"] = text,
+    ["@tag.builtin"] = text,
+    ["@tag.attribute"] = text,
+    ["@tag.delimiter"] = punct,
 
     ["@markup.heading"] = bold,
     ["@markup.strong"] = { bold = true },
@@ -155,8 +205,11 @@ local function groups(p)
     ["@diff.minus"] = { fg = p.error },
     ["@diff.delta"] = { fg = p.warning },
 
-    -- LSP semantic tokens bring their own colours otherwise.
+    -- LSP semantic tokens link to the treesitter groups by default. Clear the
+    -- ones that would make every call bold or hide treesitter comments.
     ["@lsp.type.comment"] = {},
+    ["@lsp.type.function"] = {},
+    ["@lsp.type.method"] = {},
     LspReferenceText = { bg = p.surface },
     LspReferenceRead = { bg = p.surface },
     LspReferenceWrite = { bg = p.surface, underline = true },
